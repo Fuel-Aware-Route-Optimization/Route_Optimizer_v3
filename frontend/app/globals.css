@@ -465,3 +465,48 @@ button {
     font-size: 1.16rem;
   }
 }
+
+/* leaflet map fills the background */
+.route-map {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background: #0d1630;
+}
+
+.route-map .leaflet-control-attribution {
+  background: rgba(13, 22, 48, 0.7);
+  color: #6b7fa0;
+  font-size: 0.6rem;
+}
+
+.map-loading,
+.map-error {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: var(--ink-muted);
+  font-size: 0.95rem;
+  z-index: 0;
+}
+
+.map-error {
+  color: #ff6b6b;
+}
+
+/* route header selects */
+.route-field select {
+  border: 0;
+  outline: none;
+  width: 100%;
+  background: transparent;
+  font-size: 1rem;
+  color: #ecf3ff;
+  cursor: pointer;
+}
+
+.route-field select option {
+  background: #0d1630;
+  color: #ecf3ff;
+}
