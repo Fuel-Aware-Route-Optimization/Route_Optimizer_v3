@@ -56,7 +56,7 @@ class NodeOut(BaseModel):
     id: str
     x: float
     y: float
-    fuel_price: float
+    fuel_price: float  # single price for now, TODO expand to per fuel type when a station API is wired in
 
 
 class EdgeOut(BaseModel):
