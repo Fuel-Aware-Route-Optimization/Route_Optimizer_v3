@@ -128,7 +128,7 @@ export default function RouteMap({
   }
 
   return (
-    <MapContainer center={center} zoom={6} className="route-map" scrollWheelZoom>
+    <MapContainer center={center} zoom={6} className="route-map" scrollWheelZoom style={{ width: "100%", height: "100%" }}>
       <TileLayer
         attribution='&copy; <a href="https://carto.com/">CARTO</a>'
         url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
