@@ -4,6 +4,7 @@
   --bg-deep: #0d1630;
   --bg-mid: #1b2f56;
   --bg-map: #264a63;
+  --sidebar-width: clamp(320px, 34vw, 420px);
   --ink: #e8ecf9;
   --ink-muted: #a6b3cf;
   --sheet: #1b2543;
@@ -57,16 +58,28 @@ button {
 
 .app-shell {
   position: relative;
-  width: 100vw;
+  width: 100%;
   height: 100dvh;
+  min-height: 100dvh;
   overflow: hidden;
+  isolation: isolate;
   background: linear-gradient(180deg, var(--bg-mid) 0%, var(--bg-deep) 100%);
 }
 
+.app-overlay,
 .map-canvas,
 .map-grid {
   position: absolute;
   inset: 0;
+}
+
+.app-overlay {
+  z-index: 10;
+  pointer-events: none;
+}
+
+.app-overlay > * {
+  pointer-events: auto;
 }
 
 .map-canvas {
@@ -93,7 +106,7 @@ button {
   display: flex;
   align-items: center;
   gap: 8px;
-  z-index: 20;
+  min-width: 0;
 }
 
 .icon-btn {
@@ -111,6 +124,7 @@ button {
   flex: 1;
   display: grid;
   gap: 8px;
+  min-width: 0;
 }
 
 .route-field {
@@ -422,8 +436,8 @@ button {
   .route-head {
     top: 24px;
     left: 20px;
-    right: auto;
-    width: min(680px, calc(100% - 500px));
+    right: calc(var(--sidebar-width) + 40px);
+    max-width: 680px;
   }
 
   .sheet {
@@ -431,7 +445,7 @@ button {
     left: auto;
     right: 20px;
     bottom: 20px;
-    width: min(420px, 34vw);
+    width: min(var(--sidebar-width), calc(100% - 40px));
     max-height: none;
     border-radius: 18px;
     border: 1px solid rgba(255, 255, 255, 0.15);
@@ -445,7 +459,7 @@ button {
     left: 20px;
     right: auto;
     bottom: 16px;
-    width: 360px;
+    width: min(360px, calc(100% - var(--sidebar-width) - 60px));
     height: 58px;
     border-radius: 14px;
     border: 1px solid rgba(255, 255, 255, 0.14);
@@ -470,7 +484,7 @@ button {
 .route-map {
   position: absolute;
   inset: 0;
-  z-index: 1;
+  z-index: 0;
   background: #0d1630;
 }
 
