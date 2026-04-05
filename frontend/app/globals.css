@@ -510,3 +510,108 @@ button {
   background: #0d1630;
   color: #ecf3ff;
 }
+
+/* station panel */
+.station-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.station-header h1 {
+  margin: 0;
+  font-size: 1.4rem;
+}
+
+.station-filters {
+  margin-bottom: 12px;
+}
+
+.station-filters label {
+  display: grid;
+  gap: 4px;
+}
+
+.station-filters span {
+  font-size: 0.65rem;
+  color: var(--ink-muted);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.station-filters select {
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 8px;
+  background: rgba(11, 22, 45, 0.6);
+  color: #dce6ff;
+  font-size: 0.9rem;
+  padding: 8px;
+  width: 100%;
+  max-width: 200px;
+}
+
+.station-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 8px;
+}
+
+.station-card {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid rgba(87, 160, 255, 0.25);
+  border-radius: 11px;
+  background: linear-gradient(120deg, rgba(30, 50, 90, 0.8), rgba(25, 42, 75, 0.75));
+}
+
+.station-index {
+  width: 2rem;
+  height: 2rem;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: rgba(87, 160, 255, 0.2);
+  color: var(--line);
+  font-weight: 700;
+  font-size: 0.85rem;
+  font-family: var(--font-mono);
+}
+
+.station-info {
+  display: grid;
+  min-width: 0;
+}
+
+.station-info strong {
+  font-size: 1.02rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.station-info small {
+  color: var(--ink-muted);
+  font-size: 0.75rem;
+}
+
+.station-price {
+  display: grid;
+  justify-items: end;
+}
+
+.station-price strong {
+  font-size: 1.25rem;
+  color: #d4ec94;
+}
+
+.station-price small {
+  color: var(--ink-muted);
+  font-size: 0.72rem;
+}
