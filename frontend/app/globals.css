@@ -62,24 +62,13 @@ button {
   height: 100dvh;
   min-height: 100dvh;
   overflow: hidden;
-  isolation: isolate;
   background: linear-gradient(180deg, var(--bg-mid) 0%, var(--bg-deep) 100%);
 }
 
-.app-overlay,
 .map-canvas,
 .map-grid {
   position: absolute;
   inset: 0;
-}
-
-.app-overlay {
-  z-index: 10;
-  pointer-events: none;
-}
-
-.app-overlay > * {
-  pointer-events: auto;
 }
 
 .map-canvas {
@@ -106,6 +95,7 @@ button {
   display: flex;
   align-items: center;
   gap: 8px;
+  z-index: 20;
   min-width: 0;
 }
 
@@ -445,7 +435,8 @@ button {
     left: auto;
     right: 20px;
     bottom: 20px;
-    width: min(var(--sidebar-width), calc(100% - 40px));
+    width: var(--sidebar-width);
+    max-width: calc(100% - 40px);
     max-height: none;
     border-radius: 18px;
     border: 1px solid rgba(255, 255, 255, 0.15);
@@ -459,7 +450,8 @@ button {
     left: 20px;
     right: auto;
     bottom: 16px;
-    width: min(360px, calc(100% - var(--sidebar-width) - 60px));
+    width: 360px;
+    max-width: calc(100% - var(--sidebar-width) - 60px);
     height: 58px;
     border-radius: 14px;
     border: 1px solid rgba(255, 255, 255, 0.14);
@@ -484,7 +476,7 @@ button {
 .route-map {
   position: absolute;
   inset: 0;
-  z-index: 0;
+  z-index: 1;
   background: #0d1630;
 }
 

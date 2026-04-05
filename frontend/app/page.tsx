@@ -106,54 +106,52 @@ export default function Home() {
           />
         )}
 
-        <div className="app-overlay">
-          <header className="route-head">
-            <button className="icon-btn" aria-label="Back">
-              <span aria-hidden>‹</span>
-            </button>
-            <div className="route-inputs">
-              <label className="route-field">
-                <span className="field-label">From</span>
-                <select
-                  value={origin}
-                  onChange={(e) => {
-                    setOrigin(e.target.value);
-                    fetchRoute(e.target.value, destination);
-                  }}
-                >
-                  {availableCities.map((c) => (
-                    <option key={c} value={c}>{c}</option>
-                  ))}
-                </select>
-              </label>
-              <label className="route-field">
-                <span className="field-label">To</span>
-                <select
-                  value={destination}
-                  onChange={(e) => {
-                    setDestination(e.target.value);
-                    fetchRoute(origin, e.target.value);
-                  }}
-                >
-                  {availableCities.map((c) => (
-                    <option key={c} value={c}>{c}</option>
-                  ))}
-                </select>
-              </label>
-            </div>
-            <button className="icon-btn" onClick={handleSwap} aria-label="Swap route">
-              ↕
-            </button>
-          </header>
+        <header className="route-head">
+          <button className="icon-btn" aria-label="Back">
+            <span aria-hidden>‹</span>
+          </button>
+          <div className="route-inputs">
+            <label className="route-field">
+              <span className="field-label">From</span>
+              <select
+                value={origin}
+                onChange={(e) => {
+                  setOrigin(e.target.value);
+                  fetchRoute(e.target.value, destination);
+                }}
+              >
+                {availableCities.map((c) => (
+                  <option key={c} value={c}>{c}</option>
+                ))}
+              </select>
+            </label>
+            <label className="route-field">
+              <span className="field-label">To</span>
+              <select
+                value={destination}
+                onChange={(e) => {
+                  setDestination(e.target.value);
+                  fetchRoute(origin, e.target.value);
+                }}
+              >
+                {availableCities.map((c) => (
+                  <option key={c} value={c}>{c}</option>
+                ))}
+              </select>
+            </label>
+          </div>
+          <button className="icon-btn" onClick={handleSwap} aria-label="Swap route">
+            ↕
+          </button>
+        </header>
 
-          <StationPanel nodes={nodes} routePath={routePath} />
+        <StationPanel nodes={nodes} routePath={routePath} />
 
-          <nav className="bottom-nav" aria-label="Primary">
-            <button>Home</button>
-            <button className="active">Fuel Map</button>
-            <button>Cards</button>
-          </nav>
-        </div>
+        <nav className="bottom-nav" aria-label="Primary">
+          <button>Home</button>
+          <button className="active">Fuel Map</button>
+          <button>Cards</button>
+        </nav>
       </section>
     </main>
   );
