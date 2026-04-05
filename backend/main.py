@@ -14,6 +14,7 @@ from Algorithms.greedy_cheap_fuel import GreedyCheapFuel
 from Algorithms.astar_fuel import AStarFuel
 from services.graph import generate_random_graph, Vehicle
 from services.eia import get_city_prices
+from services.tomtom import get_route_geometry
 
 load_dotenv()
 
@@ -115,8 +116,8 @@ def get_eia_prices(seed: int = 42):
 def get_road_route(
     lon1: float, lat1: float, lon2: float, lat2: float
 ) -> Optional[List[List[float]]]:
-    """Skipping OSRM for now (public server unreachable). Straight-line fallback."""
-    return None
+    #try tomtom for real road geometry, None if no key or api fails
+    return get_route_geometry(lon1, lat1, lon2, lat2)
 
 
 @app.get("/route", response_model=RouteResponse)
