@@ -115,15 +115,7 @@ def get_eia_prices(seed: int = 42):
 def get_road_route(
     lon1: float, lat1: float, lon2: float, lat2: float
 ) -> Optional[List[List[float]]]:
-    """Call OSRM to get road geometry between two points. Returns None if unreachable."""
-    try:
-        url = f"http://router.project-osrm.org/route/v1/driving/{lon1},{lat1};{lon2},{lat2}?overview=full&geometries=geojson"
-        with urllib.request.urlopen(url, timeout=5) as response:
-            data = json.loads(response.read().decode())
-            if data.get("code") == "Ok" and data.get("routes"):
-                return data["routes"][0]["geometry"]["coordinates"]
-    except Exception as e:
-        print(f"OSRM routing failed: {e}")
+    """Skipping OSRM for now (public server unreachable). Straight-line fallback."""
     return None
 
 
