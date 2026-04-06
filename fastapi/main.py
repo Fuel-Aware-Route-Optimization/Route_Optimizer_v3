@@ -1,6 +1,5 @@
 from typing import List, Optional
 
-from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
@@ -9,7 +8,13 @@ from services.fuel import FuelPlan, build_fuel_plan
 from services.places import PlaceCandidate, geocode_place, reverse_geocode, search_places
 from services.routing import get_driving_route
 
-load_dotenv()
+try:
+    from dotenv import load_dotenv
+except ModuleNotFoundError:
+    load_dotenv = None
+
+if load_dotenv is not None:
+    load_dotenv()
 
 app = FastAPI(
     title="Fuel-Aware Route Optimizer",
