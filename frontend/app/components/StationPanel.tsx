@@ -1,142 +1,180 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import type { MapNode } from "./RouteMap";
 
-// fuel types for the filter dropdown
-const FUEL_TYPES = ["Diesel", "Regular", "Premium"];
+import type { FuelStop, PlaceSuggestion, RouteSummary } from "../types";
+
+const FUEL_TYPES = [
+  { value: "regular", label: "Regular" },
+  { value: "premium", label: "Premium" },
+  { value: "diesel", label: "Diesel" },
+];
 
 interface StationPanelProps {
-  nodes: MapNode[];
-  routePath: string[];
+  origin: PlaceSuggestion | null;
+  destination: PlaceSuggestion | null;
+  summary: RouteSummary | null;
+  fuelStops: FuelStop[];
+  fuelType: string;
+  onFuelTypeChange: (fuelType: string) => void;
 }
 
-export default function StationPanel({ nodes, routePath }: StationPanelProps) {
-  const [sortAsc, setSortAsc] = useState(true);
-  const [fuelFilter, setFuelFilter] = useState(FUEL_TYPES[0]);
+function formatDuration(minutes: number) {
+  const hours = Math.floor(minutes / 60);
+  const mins = Math.round(minutes % 60);
+  if (hours <= 0) return `${mins} min`;
+  return `${hours} hr ${mins} min`;
+}
 
-  // only show stations that are on the route, deduped
-  const routeStations = useMemo(() => {
-    const seen = new Set<string>();
-    const nodeMap = new Map(nodes.map((n) => [n.id, n]));
-    const stations: MapNode[] = [];
-    for (const id of routePath) {
-      if (seen.has(id)) continue;
-      seen.add(id);
-      const node = nodeMap.get(id);
-      if (node) stations.push(node);
-    }
-    return stations;
-  }, [nodes, routePath]);
+export default function StationPanel({
+  origin,
+  destination,
+  summary,
+  fuelStops,
+  fuelType,
+  onFuelTypeChange,
+}: StationPanelProps) {
+  const [sortBy, setSortBy] = useState<"distance" | "price">("distance");
 
-  // sort by price
-  const sorted = useMemo(() => {
-    const copy = [...routeStations];
-    copy.sort((a, b) =>
-      sortAsc ? a.fuel_price - b.fuel_price : b.fuel_price - a.fuel_price
+  const sortedStops = useMemo(() => {
+    const enRoute = fuelStops.filter((stop) => stop.kind === "stop");
+    return [...enRoute].sort((a, b) =>
+      sortBy === "price"
+        ? a.fuel_price - b.fuel_price
+        : a.distance_from_start_km - b.distance_from_start_km,
     );
-    return copy;
-  }, [routeStations, sortAsc]);
+  }, [fuelStops, sortBy]);
 
-  // TODO: backend returns one price per node with no fuel type
-  // when a fuel prices API is integrated, filter here by fuelFilter
-
-  const shortName = (id: string) =>
-    id.includes(",") ? id.split(",")[0].trim() : id;
+  const startingStop = fuelStops.find((stop) => stop.kind === "origin") ?? null;
 
   return (
-    <section className="sheet">
+    <aside className="sheet">
       <div className="sheet-handle" />
 
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
-        <h1 style={{ margin: 0, fontSize: "1.4rem" }}>Stations ({sorted.length})</h1>
-        <button className="sort-btn" onClick={() => setSortAsc(!sortAsc)}>
-          Price {sortAsc ? "↑" : "↓"}
-        </button>
-      </div>
+      <div className="sheet-header">
+        <div>
+          <p className="eyebrow">Fuel-aware route</p>
+          <h1>Trip plan</h1>
+        </div>
 
-      <div style={{ marginBottom: 12 }}>
-        <label style={{ display: "grid", gap: 4, maxWidth: 200 }}>
-          <span style={{ fontSize: "0.65rem", color: "#a6b3cf", letterSpacing: "0.05em", textTransform: "uppercase" }}>
-            Fuel type
-          </span>
-          <select
-            value={fuelFilter}
-            onChange={(e) => setFuelFilter(e.target.value)}
-            style={{
-              border: "1px solid rgba(255,255,255,0.18)",
-              borderRadius: 8,
-              background: "rgba(11,22,45,0.6)",
-              color: "#dce6ff",
-              fontSize: "0.9rem",
-              padding: "8px",
-            }}
-          >
-            {FUEL_TYPES.map((f) => (
-              <option key={f}>{f}</option>
+        <label className="fuel-select">
+          <span>Fuel</span>
+          <select value={fuelType} onChange={(event) => onFuelTypeChange(event.target.value)}>
+            {FUEL_TYPES.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
             ))}
           </select>
         </label>
       </div>
 
-      <div style={{ display: "grid", gap: 8 }}>
-        {sorted.length === 0 ? (
-          <div className="empty-state">No stations on this route yet.</div>
-        ) : (
-          sorted.map((station, i) => (
-            <div
-              key={station.id}
-              style={{
-                display: "grid",
-                gridTemplateColumns: "2.2rem 1fr auto",
-                alignItems: "center",
-                gap: 10,
-                padding: "10px 12px",
-                border: "1px solid rgba(87,160,255,0.25)",
-                borderRadius: 11,
-                background: "linear-gradient(120deg, rgba(30,50,90,0.8), rgba(25,42,75,0.75))",
-              }}
-            >
-              <span
-                style={{
-                  width: "2.2rem",
-                  height: "2.2rem",
-                  display: "grid",
-                  placeItems: "center",
-                  borderRadius: "50%",
-                  background: "rgba(87,160,255,0.2)",
-                  color: "#57a0ff",
-                  fontWeight: 700,
-                  fontSize: "0.85rem",
-                }}
-              >
-                {i + 1}
-              </span>
+      {origin && destination ? (
+        <div className="journey-card">
+          <div>
+            <span className="journey-label">From</span>
+            <strong>{origin.primary_text}</strong>
+            <small>{origin.secondary_text}</small>
+          </div>
+          <div className="journey-arrow">→</div>
+          <div>
+            <span className="journey-label">To</span>
+            <strong>{destination.primary_text}</strong>
+            <small>{destination.secondary_text}</small>
+          </div>
+        </div>
+      ) : (
+        <div className="empty-state">
+          Search any two cities or addresses to build a live driving route with fuel planning.
+        </div>
+      )}
 
-              <div style={{ display: "grid", gap: 1, minWidth: 0 }}>
-                <strong style={{ fontSize: "1.02rem", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                  {shortName(station.id)}
-                </strong>
-                <small style={{ color: "#a6b3cf", fontSize: "0.75rem" }}>
-                  {station.id}
-                </small>
-                <small style={{ color: "#a6b3cf", fontSize: "0.72rem" }}>
-                  {station.y.toFixed(3)}°N, {Math.abs(station.x).toFixed(3)}°W
-                </small>
-              </div>
+      {summary ? (
+        <>
+          <div className="stats-grid">
+            <div className="stat-card">
+              <span>Drive</span>
+              <strong>{summary.distance_km.toFixed(0)} km</strong>
+              <small>{formatDuration(summary.duration_min)}</small>
+            </div>
+            <div className="stat-card">
+              <span>Fuel</span>
+              <strong>${summary.estimated_fuel_cost.toFixed(2)}</strong>
+              <small>{summary.estimated_gallons.toFixed(1)} gal est.</small>
+            </div>
+            <div className="stat-card">
+              <span>Average</span>
+              <strong>${summary.average_fuel_price.toFixed(2)}</strong>
+              <small>{summary.fuel_type}/gal</small>
+            </div>
+            <div className="stat-card">
+              <span>Range</span>
+              <strong>{summary.estimated_range_miles.toFixed(0)} mi</strong>
+              <small>usable tank range</small>
+            </div>
+          </div>
 
-              <div style={{ display: "grid", justifyItems: "end", gap: 1 }}>
-                <strong style={{ fontSize: "1.25rem", color: "#d4ec94" }}>
-                  ${station.fuel_price.toFixed(2)}
-                </strong>
-                <small style={{ color: "#a6b3cf", fontSize: "0.72rem" }}>
-                  {fuelFilter}/gal
-                </small>
+          {startingStop ? (
+            <div className="reminder-card">
+              <p className="eyebrow">Starting fill</p>
+              <strong>{startingStop.name}</strong>
+              <small>{startingStop.subtitle}</small>
+              <div className="reminder-metrics">
+                <span>${startingStop.fuel_price.toFixed(2)}/gal</span>
+                <span>{startingStop.gallons_to_buy.toFixed(1)} gal</span>
+                <span>${startingStop.estimated_cost.toFixed(2)}</span>
               </div>
             </div>
-          ))
-        )}
-      </div>
-    </section>
+          ) : null}
+
+          <div className="panel-section">
+            <div className="section-head">
+              <div>
+                <p className="eyebrow">Suggested refuels</p>
+                <h2>{sortedStops.length} route stops</h2>
+              </div>
+              <button
+                type="button"
+                className="sort-btn"
+                onClick={() =>
+                  setSortBy((current) => (current === "distance" ? "price" : "distance"))
+                }
+              >
+                Sort: {sortBy === "distance" ? "distance" : "price"}
+              </button>
+            </div>
+
+            {sortedStops.length === 0 ? (
+              <div className="empty-state">
+                This trip fits inside the estimated tank range, so no en route refuel stop is needed.
+              </div>
+            ) : (
+              <div className="stop-list">
+                {sortedStops.map((stop, index) => (
+                  <article key={stop.id} className="stop-card">
+                    <div className="stop-rank">{index + 1}</div>
+                    <div className="stop-main">
+                      <strong>{stop.name}</strong>
+                      <small>{stop.subtitle}</small>
+                      <small>
+                        {stop.distance_from_start_km.toFixed(0)} km from start • next leg{" "}
+                        {stop.leg_distance_km.toFixed(0)} km
+                      </small>
+                    </div>
+                    <div className="stop-price">
+                      <strong>${stop.fuel_price.toFixed(2)}</strong>
+                      <small>{stop.gallons_to_buy.toFixed(1)} gal</small>
+                      <em>${stop.estimated_cost.toFixed(2)}</em>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <p className="panel-note">{summary.note}</p>
+        </>
+      ) : null}
+    </aside>
   );
 }
