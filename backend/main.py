@@ -1,48 +1,17 @@
-from typing import Dict, List, Optional, Literal
-import urllib.request
-import json
-import os
-from pathlib import Path
+from typing import List, Optional
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, Query
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
-from Algorithms.dijkstra_fuel import DijkstraFuel
-from Algorithms.greedy_cheap_fuel import GreedyCheapFuel
-from Algorithms.astar_fuel import AStarFuel
-from services.graph import generate_random_graph, Vehicle
-from services.eia import get_city_prices
-from services.tomtom import get_route_geometry
+from services.fuel import FuelPlan, build_fuel_plan
+from services.places import PlaceCandidate, geocode_place, reverse_geocode, search_places
+from services.routing import get_driving_route
 
 load_dotenv()
 
 app = FastAPI(title="Fuel-Aware Route Optimizer")
-
-FUEL_PRICE_SOURCE: Literal["json", "random", "eia"] = "eia"
-# "json" = fuel_prices.json, "random" = graph seed, "eia" = EIA weekly diesel API
-
-EIAKEY = os.environ.get("EIAKEY", "")
-
-_FUEL_PRICES_PATH = Path(__file__).parent / "data" / "fuel_prices.json"
-
-DEFAULT_FUEL_PRICE = 3.50
-
-
-def _load_fuel_prices_from_json() -> Dict[str, float]:
-    with open(_FUEL_PRICES_PATH, "r", encoding="utf-8") as f:
-        data = json.load(f)
-    return {city: float(price) for city, price in data["prices"].items()}
-
-
-def compute_fuel_cost_from_distance_km(distance_km: float, vehicle) -> float:
-    try:
-        fuel_used = distance_km * float(getattr(vehicle, "consumption_per_dist", 0.0))
-        return float(fuel_used * DEFAULT_FUEL_PRICE)
-    except Exception:
-        return 0.0
-
 
 app.add_middleware(
     CORSMiddleware,
@@ -52,176 +21,192 @@ app.add_middleware(
 )
 
 
-class NodeOut(BaseModel):
+class PlaceSuggestionOut(BaseModel):
     id: str
-    x: float
-    y: float
-    fuel_price: float  # single price for now, TODO expand to per fuel type when a station API is wired in
+    label: str
+    primary_text: str
+    secondary_text: str
+    lat: float
+    lon: float
+    country_code: Optional[str] = None
+    state_code: Optional[str] = None
 
 
-class EdgeOut(BaseModel):
-    from_: str
-    to: str
-    distance: float
-    geometry: Optional[List[List[float]]] = None
+class FuelStopOut(BaseModel):
+    id: str
+    kind: str
+    name: str
+    subtitle: str
+    lat: float
+    lon: float
+    distance_from_start_km: float
+    fuel_price: float
+    gallons_to_buy: float
+    estimated_cost: float
+    leg_distance_km: float
 
 
-class RouteSummary(BaseModel):
+class RouteSummaryOut(BaseModel):
     distance_km: float
-    fuel_cost: float
-
-
-class RouteOut(BaseModel):
-    path: List[str]
-    total_distance: float
-    fuel_cost: float
-    objective: float
-    expanded: int
-    notes: Optional[str] = None
-    summary: Optional[RouteSummary] = None
-
-
-class RouteComparison(BaseModel):
-    baseline_fuel_cost: float
-    optimized_fuel_cost: float
-    savings_amount: float
-    savings_percent: float
+    duration_min: float
+    fuel_type: str
+    estimated_gallons: float
+    estimated_fuel_cost: float
+    average_fuel_price: float
+    estimated_range_miles: float
+    note: str
 
 
 class RouteResponse(BaseModel):
-    api_version: str = "v1"
-    nodes: List[NodeOut]
-    edges: List[EdgeOut]
-    route: RouteOut
-    baseline_path: List[str] = Field(default_factory=list)
-    comparison: Optional[RouteComparison] = None
+    api_version: str = "v2"
+    origin: PlaceSuggestionOut
+    destination: PlaceSuggestionOut
+    geometry: List[List[float]]
+    bounds: List[List[float]]
+    summary: RouteSummaryOut
+    fuel_stops: List[FuelStopOut] = Field(default_factory=list)
 
 
-@app.get("/eia-prices")
-def get_eia_prices(seed: int = 42):
-    if not EIAKEY:
-        return {"error": "EIAKEY not set in .env"}
+def _place_to_model(place: PlaceCandidate) -> PlaceSuggestionOut:
+    return PlaceSuggestionOut(
+        id=place.place_id,
+        label=place.label,
+        primary_text=place.primary_text,
+        secondary_text=place.secondary_text,
+        lat=place.lat,
+        lon=place.lon,
+        country_code=place.country_code,
+        state_code=place.state_code,
+    )
+
+
+def _resolve_place(
+    query: Optional[str],
+    lat: Optional[float],
+    lon: Optional[float],
+    label: Optional[str],
+) -> PlaceCandidate:
+    if lat is not None and lon is not None:
+        fallback_label = label.strip() if label else f"{lat:.4f}, {lon:.4f}"
+        try:
+            nearby = reverse_geocode(lat, lon)
+            return PlaceCandidate(
+                place_id=nearby.place_id,
+                label=fallback_label,
+                primary_text=nearby.primary_text,
+                secondary_text=nearby.secondary_text,
+                lat=lat,
+                lon=lon,
+                country_code=nearby.country_code,
+                country=nearby.country,
+                state=nearby.state,
+                state_code=nearby.state_code,
+            )
+        except Exception:
+            return PlaceCandidate(
+                place_id=fallback_label,
+                label=fallback_label,
+                primary_text=fallback_label.split(",")[0].strip(),
+                secondary_text=label.strip() if label else "Selected destination",
+                lat=lat,
+                lon=lon,
+            )
+
+    if not query or not query.strip():
+        raise HTTPException(status_code=400, detail="Both origin and destination are required.")
+
     try:
-        city_prices, state_prices, period = get_city_prices(EIAKEY, seed)
-        return {
-            "source": "eia",
-            "period": period,
-            "state_averages": state_prices,
-            "city_prices": city_prices,
-        }
-    except Exception as e:
-        return {"error": str(e)}
+        return geocode_place(query)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
-def get_road_route(
-    lon1: float, lat1: float, lon2: float, lat2: float
-) -> Optional[List[List[float]]]:
-    #try tomtom for real road geometry, None if no key or api fails
-    return get_route_geometry(lon1, lat1, lon2, lat2)
+def _fuel_plan_to_stops(plan: FuelPlan) -> List[FuelStopOut]:
+    return [
+        FuelStopOut(
+            id=stop.id,
+            kind=stop.kind,
+            name=stop.name,
+            subtitle=stop.subtitle,
+            lat=stop.lat,
+            lon=stop.lon,
+            distance_from_start_km=stop.distance_from_start_km,
+            fuel_price=stop.fuel_price,
+            gallons_to_buy=stop.gallons_to_buy,
+            estimated_cost=stop.estimated_cost,
+            leg_distance_km=stop.leg_distance_km,
+        )
+        for stop in plan.stops
+    ]
+
+
+@app.get("/places/search", response_model=List[PlaceSuggestionOut])
+def search_places_endpoint(
+    q: str = Query(..., min_length=2),
+    limit: int = Query(6, ge=1, le=8),
+):
+    try:
+        places = search_places(q, limit=limit)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=502,
+            detail="Place search is unavailable right now.",
+        ) from exc
+
+    return [_place_to_model(place) for place in places]
 
 
 @app.get("/route", response_model=RouteResponse)
 def get_route(
-    algorithm: Literal["dijkstra", "astar", "greedy"] = "dijkstra",
-    seed: int = 42,
-    start: Optional[str] = Query(None),
-    goal: Optional[str] = Query(None),
+    origin_query: Optional[str] = Query(None),
+    destination_query: Optional[str] = Query(None),
+    origin_lat: Optional[float] = Query(None),
+    origin_lon: Optional[float] = Query(None),
+    destination_lat: Optional[float] = Query(None),
+    destination_lon: Optional[float] = Query(None),
+    origin_label: Optional[str] = Query(None),
+    destination_label: Optional[str] = Query(None),
+    fuel_type: str = Query("regular"),
 ):
-    if FUEL_PRICE_SOURCE == "json":
-        print("[fuel] Using fuel_prices.json")
-        price_overrides = _load_fuel_prices_from_json()
-    elif FUEL_PRICE_SOURCE == "eia" and EIAKEY:
-        try:
-            price_overrides, _, _ = get_city_prices(EIAKEY, seed)
-            print("[fuel] Using EIA live prices")
-        except Exception as e:
-            print(f"[fuel] EIA fetch failed, falling back to fuel_prices.json: {e}")
-            price_overrides = _load_fuel_prices_from_json()
-    else:
-        print("[fuel] No EIA key set, using random graph prices")
-        price_overrides = None
-
-    g, positions = generate_random_graph(n=12, edge_prob=0.3, seed=seed, price_overrides=price_overrides)
-
-    vehicle = Vehicle(tank_capacity=20, fuel=5, consumption_per_dist=0.08)
-    weights = {"distance": 1.0, "fuel": 1.0}
-
-    if algorithm == "astar":
-        algo = AStarFuel()
-    elif algorithm == "greedy":
-        algo = GreedyCheapFuel()
-    else:
-        algo = DijkstraFuel()
-
-    node_ids = list(positions.keys())
-    if not node_ids:
-        empty_route = RouteOut(path=[], total_distance=0.0, fuel_cost=0.0,
-                               objective=0.0, expanded=0, notes="Empty graph.")
-        return RouteResponse(nodes=[], edges=[], route=empty_route, baseline_path=[])
-
-    if start is None:
-        start = str(node_ids[0])
-    if goal is None:
-        goal = str(node_ids[-1])
-
-    result = algo.solve(g, start, goal, vehicle, weights, positions)
-
-    path = [str(n) for n in result.get("path", [])]
-    total_distance = float(result.get("total_distance", 0.0) or 0.0)
-    fuel_cost = float(result.get("fuel_cost", 0.0) or 0.0)
-    objective = float(result.get("objective", 0.0) or 0.0)
-    expanded = int(result.get("expanded", 0) or 0)
-    notes = result.get("notes")
-
-    route_out = RouteOut(path=path, total_distance=total_distance, fuel_cost=fuel_cost,
-                         objective=objective, expanded=expanded, notes=notes)
-
-    baseline_path: List[str] = []
-    baseline_fuel_cost = 0.0
-    try:
-        baseline_algo = DijkstraFuel()
-        baseline_result = baseline_algo.solve(g, start, goal, vehicle, {"distance": 1.0, "fuel": 0.0}, positions)
-        baseline_path = [str(n) for n in baseline_result.get("path", [])]
-        baseline_total_distance = float(baseline_result.get("total_distance", 0.0) or 0.0)
-        baseline_fuel_cost = float(baseline_result.get("fuel_cost", 0.0) or 0.0)
-        if baseline_fuel_cost <= 0.0:
-            baseline_fuel_cost = compute_fuel_cost_from_distance_km(baseline_total_distance, vehicle)
-    except Exception as e:
-        print(f"Baseline route calculation failed: {e}")
-
-    optimized_fuel_cost = fuel_cost if fuel_cost > 0 else compute_fuel_cost_from_distance_km(total_distance, vehicle)
-    savings_amount = baseline_fuel_cost - optimized_fuel_cost
-    savings_percent = (savings_amount / baseline_fuel_cost * 100.0) if baseline_fuel_cost > 0 else 0.0
-
-    comparison = RouteComparison(
-        baseline_fuel_cost=round(baseline_fuel_cost, 2),
-        optimized_fuel_cost=round(optimized_fuel_cost, 2),
-        savings_amount=round(savings_amount, 2),
-        savings_percent=round(savings_percent, 2),
+    origin = _resolve_place(origin_query, origin_lat, origin_lon, origin_label)
+    destination = _resolve_place(
+        destination_query,
+        destination_lat,
+        destination_lon,
+        destination_label,
     )
 
-    route_out.summary = RouteSummary(distance_km=total_distance, fuel_cost=fuel_cost)
+    if abs(origin.lat - destination.lat) < 1e-7 and abs(origin.lon - destination.lon) < 1e-7:
+        raise HTTPException(status_code=400, detail="Choose two different destinations.")
 
-    nodes_out: List[NodeOut] = []
-    for node_id, (x, y) in positions.items():
-        nodes_out.append(NodeOut(id=str(node_id), x=float(x), y=float(y),
-                                 fuel_price=float(g.fuel_price(node_id))))
+    try:
+        route = get_driving_route(origin.lon, origin.lat, destination.lon, destination.lat)
+        fuel_plan = build_fuel_plan(route, origin, destination, fuel_type)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(
+            status_code=502,
+            detail="Route services are unavailable right now.",
+        ) from exc
 
-    edges_out: List[EdgeOut] = []
-    seen = set()
-    for u in positions.keys():
-        for e in g.neighbors(u):
-            v = e.to
-            key = tuple(sorted((str(u), str(v))))
-            if key in seen:
-                continue
-            seen.add(key)
-            u_lon, u_lat = positions[u]
-            v_lon, v_lat = positions[v]
-            geometry = get_road_route(u_lon, u_lat, v_lon, v_lat)
-            edges_out.append(EdgeOut(from_=str(u), to=str(v),
-                                     distance=float(getattr(e, "distance", 0.0) or 0.0),
-                                     geometry=geometry))
-
-    return RouteResponse(api_version="v1", nodes=nodes_out, edges=edges_out,
-                         route=route_out, baseline_path=baseline_path, comparison=comparison)
+    return RouteResponse(
+        origin=_place_to_model(origin),
+        destination=_place_to_model(destination),
+        geometry=route.geometry,
+        bounds=route.bounds,
+        summary=RouteSummaryOut(
+            distance_km=round(route.distance_km, 1),
+            duration_min=round(route.duration_min, 1),
+            fuel_type=fuel_plan.summary.fuel_type,
+            estimated_gallons=fuel_plan.summary.estimated_gallons,
+            estimated_fuel_cost=fuel_plan.summary.estimated_cost,
+            average_fuel_price=fuel_plan.summary.average_price,
+            estimated_range_miles=fuel_plan.summary.route_range_miles,
+            note=(
+                f"{fuel_plan.summary.note} "
+                f"{route.note or ''}"
+            ).strip(),
+        ),
+        fuel_stops=_fuel_plan_to_stops(fuel_plan),
+    )
