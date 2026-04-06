@@ -2,174 +2,156 @@
 
 import React from "react";
 import {
-  MapContainer,
-  TileLayer,
-  Polyline,
   CircleMarker,
+  MapContainer,
+  Marker,
+  Pane,
+  Polyline,
+  TileLayer,
   Tooltip,
   useMap,
 } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 
-type NodeId = string;
-
-export interface MapNode {
-  id: NodeId;
-  x: number; // lon
-  y: number; // lat
-  fuel_price: number;
-}
-
-export interface MapEdge {
-  from_: NodeId;
-  to: NodeId;
-  distance: number;
-  geometry: number[][] | null;
-}
+import type { FuelStop, PlaceSuggestion } from "../types";
 
 interface RouteMapProps {
-  nodes: MapNode[];
-  edges: MapEdge[];
-  routePath: NodeId[];
-  fromNode?: NodeId;
-  toNode?: NodeId;
+  geometry: number[][];
+  bounds: number[][];
+  origin: PlaceSuggestion | null;
+  destination: PlaceSuggestion | null;
+  fuelStops: FuelStop[];
 }
 
-function buildEdgeKey(a: NodeId, b: NodeId) {
-  return a < b ? `${a}|${b}` : `${b}|${a}`;
-}
-
-// auto-fit map to show all nodes
-function FitBounds({ nodes }: { nodes: MapNode[] }) {
+function FitRoute({
+  bounds,
+  geometry,
+}: {
+  bounds: number[][];
+  geometry: number[][];
+}) {
   const map = useMap();
+
   React.useEffect(() => {
-    if (nodes.length > 0) {
-      const bounds = L.latLngBounds(
-        nodes.map((n) => [n.y, n.x] as [number, number])
+    if (bounds.length === 2) {
+      map.fitBounds(
+        [
+          [bounds[0][0], bounds[0][1]],
+          [bounds[1][0], bounds[1][1]],
+        ],
+        { padding: [64, 64] },
       );
-      map.fitBounds(bounds, { padding: [50, 50] });
+      return;
     }
-  }, [nodes, map]);
+
+    if (geometry.length > 1) {
+      const latLngs = geometry.map(([lon, lat]) => [lat, lon] as [number, number]);
+      map.fitBounds(L.latLngBounds(latLngs), { padding: [64, 64] });
+    }
+  }, [bounds, geometry, map]);
+
   return null;
 }
 
+function stopIcon(label: string) {
+  return L.divIcon({
+    className: "fuel-stop-marker",
+    html: `<span>${label}</span>`,
+    iconSize: [34, 34],
+    iconAnchor: [17, 17],
+  });
+}
+
 export default function RouteMap({
-  nodes,
-  edges,
-  routePath,
-  fromNode,
-  toNode,
+  geometry,
+  bounds,
+  origin,
+  destination,
+  fuelStops,
 }: RouteMapProps) {
-  const nodesById = React.useMemo(() => {
-    const m = new Map<NodeId, MapNode>();
-    nodes.forEach((n) => m.set(n.id, n));
-    return m;
-  }, [nodes]);
-
-  // build edge geometry lookup
-  const edgeGeoByKey = React.useMemo(() => {
-    const byKey = new Map<string, { from: NodeId; to: NodeId; positions: [number, number][] }>();
-    for (const edge of edges) {
-      const from = nodesById.get(edge.from_);
-      const to = nodesById.get(edge.to);
-      if (!from || !to) continue;
-      const key = buildEdgeKey(edge.from_, edge.to);
-      const positions: [number, number][] =
-        edge.geometry && edge.geometry.length > 0
-          ? edge.geometry.map(([lon, lat]) => [lat, lon])
-          : [[from.y, from.x], [to.y, to.x]];
-      byKey.set(key, { from: edge.from_, to: edge.to, positions });
-    }
-    return byKey;
-  }, [edges, nodesById]);
-
-  // build the blue polyline segments from the route path
-  const routeSegments = React.useMemo(() => {
-    const segs: { key: string; positions: [number, number][] }[] = [];
-    if (routePath.length < 2) return segs;
-
-    for (let i = 0; i < routePath.length - 1; i++) {
-      const fromId = routePath[i];
-      const toId = routePath[i + 1];
-      const edgeKey = buildEdgeKey(fromId, toId);
-      const edge = edgeGeoByKey.get(edgeKey);
-
-      if (edge) {
-        // flip if direction doesn't match
-        const positions =
-          edge.from === fromId ? edge.positions : [...edge.positions].reverse();
-        segs.push({ key: `${fromId}-${toId}-${i}`, positions });
-      } else {
-        const fromN = nodesById.get(fromId);
-        const toN = nodesById.get(toId);
-        if (fromN && toN) {
-          segs.push({
-            key: `${fromId}-${toId}-${i}`,
-            positions: [[fromN.y, fromN.x], [toN.y, toN.x]],
-          });
-        }
-      }
-    }
-    return segs;
-  }, [routePath, edgeGeoByKey, nodesById]);
-
-  const pathSet = React.useMemo(() => new Set(routePath), [routePath]);
+  const line = React.useMemo(
+    () => geometry.map(([lon, lat]) => [lat, lon] as [number, number]),
+    [geometry],
+  );
 
   const center: [number, number] = React.useMemo(() => {
-    if (nodes.length === 0) return [32, -100];
-    const avgY = nodes.reduce((s, n) => s + n.y, 0) / nodes.length;
-    const avgX = nodes.reduce((s, n) => s + n.x, 0) / nodes.length;
-    return [avgY, avgX];
-  }, [nodes]);
-
-  if (nodes.length === 0) {
-    return <div className="map-loading">no route data yet</div>;
-  }
+    if (origin) return [origin.lat, origin.lon];
+    return [39.5, -98.35];
+  }, [origin]);
 
   return (
-    <MapContainer center={center} zoom={6} className="route-map" scrollWheelZoom style={{ width: "100%", height: "100%" }}>
-      <TileLayer
-        attribution='&copy; <a href="https://carto.com/">CARTO</a>'
-        url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
-      />
-      <FitBounds nodes={nodes} />
-
-      {/* blue polyline for computed route */}
-      {routeSegments.map((seg) => (
-        <Polyline
-          key={seg.key}
-          positions={seg.positions}
-          pathOptions={{ color: "#57a0ff", weight: 4, opacity: 0.9 }}
+    <div className="route-map">
+      <MapContainer center={center} zoom={5} scrollWheelZoom className="leaflet-shell">
+        <TileLayer
+          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+          url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
         />
-      ))}
 
-      {/* city markers */}
-      {nodes.map((node) => {
-        const isStart = node.id === fromNode;
-        const isEnd = node.id === toNode;
-        const isOnRoute = pathSet.has(node.id);
-        return (
+        <FitRoute bounds={bounds} geometry={geometry} />
+
+        {line.length > 1 ? (
+          <>
+            <Polyline positions={line} pathOptions={{ color: "#1f5cff", weight: 11, opacity: 0.16 }} />
+            <Polyline positions={line} pathOptions={{ color: "#2358f5", weight: 6, opacity: 0.9 }} />
+          </>
+        ) : null}
+
+        {origin ? (
           <CircleMarker
-            key={node.id}
-            center={[node.y, node.x]}
-            radius={isStart || isEnd ? 9 : isOnRoute ? 7 : 4}
+            center={[origin.lat, origin.lon]}
+            radius={10}
             pathOptions={{
-              color: isStart ? "#10B981" : isEnd ? "#EF4444" : isOnRoute ? "#57a0ff" : "#888",
-              fillColor: isStart ? "#10B981" : isEnd ? "#EF4444" : isOnRoute ? "#57a0ff" : "#555",
-              fillOpacity: 0.85,
-              weight: 2,
+              color: "#0c8f63",
+              fillColor: "#17b37e",
+              fillOpacity: 1,
+              weight: 3,
             }}
           >
-            <Tooltip direction="top" offset={[0, -8]}>
-              <span>
-                {node.id} — ${node.fuel_price.toFixed(2)}/gal
-                {isStart ? " (start)" : isEnd ? " (end)" : ""}
-              </span>
+            <Tooltip direction="top" offset={[0, -6]}>
+              <span>{origin.label}</span>
             </Tooltip>
           </CircleMarker>
-        );
-      })}
-    </MapContainer>
+        ) : null}
+
+        {destination ? (
+          <CircleMarker
+            center={[destination.lat, destination.lon]}
+            radius={10}
+            pathOptions={{
+              color: "#b6421e",
+              fillColor: "#ff6c3b",
+              fillOpacity: 1,
+              weight: 3,
+            }}
+          >
+            <Tooltip direction="top" offset={[0, -6]}>
+              <span>{destination.label}</span>
+            </Tooltip>
+          </CircleMarker>
+        ) : null}
+
+        <Pane name="fuel-stops" style={{ zIndex: 650 }}>
+          {fuelStops
+            .filter((stop) => stop.kind === "stop")
+            .map((stop, index) => (
+              <Marker
+                key={stop.id}
+                position={[stop.lat, stop.lon]}
+                icon={stopIcon(String(index + 1))}
+                pane="fuel-stops"
+              >
+                <Tooltip direction="top" offset={[0, -16]}>
+                  <div className="map-tooltip">
+                    <strong>{stop.name}</strong>
+                    <span>{stop.subtitle}</span>
+                    <span>${stop.fuel_price.toFixed(2)}/gal</span>
+                  </div>
+                </Tooltip>
+              </Marker>
+            ))}
+        </Pane>
+      </MapContainer>
+    </div>
   );
 }
