@@ -1,6 +1,5 @@
 from typing import List, Optional
 
-from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
@@ -9,9 +8,19 @@ from services.fuel import FuelPlan, build_fuel_plan
 from services.places import PlaceCandidate, geocode_place, reverse_geocode, search_places
 from services.routing import get_driving_route
 
-load_dotenv()
+try:
+    from dotenv import load_dotenv
+except ModuleNotFoundError:
+    load_dotenv = None
 
-app = FastAPI(title="Fuel-Aware Route Optimizer")
+if load_dotenv is not None:
+    load_dotenv()
+
+app = FastAPI(
+    title="Fuel-Aware Route Optimizer",
+    description="Vercel-friendly FastAPI entrypoint for the route optimizer backend.",
+    version="2.0.0",
+)
 
 app.add_middleware(
     CORSMiddleware,
@@ -140,6 +149,18 @@ def _fuel_plan_to_stops(plan: FuelPlan) -> List[FuelStopOut]:
     ]
 
 
+@app.get("/")
+def read_root():
+    return {
+        "service": "Fuel-Aware Route Optimizer",
+        "docs": "/docs",
+        "endpoints": [
+            "/places/search",
+            "/route",
+        ],
+    }
+
+
 @app.get("/places/search", response_model=List[PlaceSuggestionOut])
 def search_places_endpoint(
     q: str = Query(..., min_length=2),
@@ -210,3 +231,9 @@ def get_route(
         ),
         fuel_stops=_fuel_plan_to_stops(fuel_plan),
     )
+
+
+if __name__ == "__main__":
+    import uvicorn
+
+    uvicorn.run("main:app", host="0.0.0.0", port=5001, reload=True)
