@@ -10,6 +10,11 @@ const FUEL_TYPES = [
   { value: "diesel", label: "Diesel" },
 ];
 
+const OPTIMIZE_OPTIONS: { value: "cost" | "distance"; label: string; icon: string }[] = [
+  { value: "cost", label: "Lowest Cost", icon: "💰" },
+  { value: "distance", label: "Shortest Distance", icon: "🛣️" },
+];
+
 interface StationPanelProps {
   origin: PlaceSuggestion | null;
   destination: PlaceSuggestion | null;
@@ -17,6 +22,8 @@ interface StationPanelProps {
   fuelStops: FuelStop[];
   fuelType: string;
   onFuelTypeChange: (fuelType: string) => void;
+  optimizeMode: "cost" | "distance";
+  onOptimizeModeChange: (mode: "cost" | "distance") => void;
 }
 
 function formatDuration(minutes: number) {
@@ -33,6 +40,8 @@ export default function StationPanel({
   fuelStops,
   fuelType,
   onFuelTypeChange,
+  optimizeMode,
+  onOptimizeModeChange,
 }: StationPanelProps) {
   const [sortBy, setSortBy] = useState<"distance" | "price">("distance");
 
@@ -47,13 +56,17 @@ export default function StationPanel({
 
   const startingStop = fuelStops.find((stop) => stop.kind === "origin") ?? null;
 
+  const activeIndex = OPTIMIZE_OPTIONS.findIndex((o) => o.value === optimizeMode);
+
   return (
     <aside className="sheet">
       <div className="sheet-handle" />
 
       <div className="sheet-header">
         <div>
-          <p className="eyebrow">Fuel-aware route</p>
+          <p className="eyebrow">
+            {optimizeMode === "cost" ? "Fuel-cost optimized" : "Distance optimized"}
+          </p>
           <h1>Trip plan</h1>
         </div>
 
@@ -67,6 +80,27 @@ export default function StationPanel({
             ))}
           </select>
         </label>
+      </div>
+
+      {/* ── Optimization mode toggle ── */}
+      <div className="optimize-toggle" role="radiogroup" aria-label="Optimization mode">
+        <div
+          className="optimize-toggle-indicator"
+          style={{ transform: `translateX(${activeIndex * 100}%)` }}
+        />
+        {OPTIMIZE_OPTIONS.map((option) => (
+          <button
+            key={option.value}
+            type="button"
+            role="radio"
+            aria-checked={optimizeMode === option.value}
+            className={`optimize-toggle-option ${optimizeMode === option.value ? "active" : ""}`}
+            onClick={() => onOptimizeModeChange(option.value)}
+          >
+            <span className="optimize-toggle-icon">{option.icon}</span>
+            {option.label}
+          </button>
+        ))}
       </div>
 
       {origin && destination ? (
@@ -92,12 +126,12 @@ export default function StationPanel({
       {summary ? (
         <>
           <div className="stats-grid">
-            <div className="stat-card">
+            <div className={`stat-card ${optimizeMode === "distance" ? "stat-card-highlight" : ""}`}>
               <span>Drive</span>
               <strong>{summary.distance_km.toFixed(0)} km</strong>
               <small>{formatDuration(summary.duration_min)}</small>
             </div>
-            <div className="stat-card">
+            <div className={`stat-card ${optimizeMode === "cost" ? "stat-card-highlight" : ""}`}>
               <span>Fuel</span>
               <strong>${summary.estimated_fuel_cost.toFixed(2)}</strong>
               <small>{summary.estimated_gallons.toFixed(1)} gal est.</small>

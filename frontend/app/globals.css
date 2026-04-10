@@ -332,6 +332,74 @@ button {
   padding: 10px 12px;
 }
 
+/* ── Optimization mode toggle ── */
+
+.optimize-toggle {
+  position: relative;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0;
+  margin-bottom: 14px;
+  border: 1px solid rgba(41, 70, 129, 0.12);
+  border-radius: 16px;
+  background: rgba(243, 247, 255, 0.7);
+  padding: 4px;
+  overflow: hidden;
+}
+
+.optimize-toggle-indicator {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  width: calc(50% - 4px);
+  height: calc(100% - 8px);
+  border-radius: 13px;
+  background: linear-gradient(135deg, var(--accent) 0%, var(--accent-strong) 100%);
+  box-shadow: 0 4px 14px rgba(35, 88, 245, 0.25);
+  transition: transform 260ms cubic-bezier(0.4, 0, 0.2, 1);
+  z-index: 0;
+  pointer-events: none;
+}
+
+.optimize-toggle-option {
+  position: relative;
+  z-index: 1;
+  border: 0;
+  border-radius: 13px;
+  background: transparent;
+  color: var(--ink-soft);
+  font-size: 0.84rem;
+  font-weight: 600;
+  padding: 10px 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  cursor: pointer;
+  transition: color 200ms ease;
+  white-space: nowrap;
+}
+
+.optimize-toggle-option.active {
+  color: #ffffff;
+}
+
+.optimize-toggle-option:not(.active):hover {
+  color: var(--ink);
+}
+
+.optimize-toggle-icon {
+  font-size: 1rem;
+  line-height: 1;
+}
+
+/* ── Highlighted stat card ── */
+
+.stat-card-highlight {
+  border-color: rgba(35, 88, 245, 0.22);
+  background: rgba(35, 88, 245, 0.06);
+}
+
 .journey-card,
 .reminder-card,
 .stat-card,
@@ -552,6 +620,7 @@ button {
 
   .search-card {
     padding: 20px;
+    max-width: calc(100vw - 480px);
   }
 
   .search-form {
@@ -561,7 +630,7 @@ button {
 
   .sheet {
     position: absolute;
-    top: 132px;
+    top: 180px;
     right: 24px;
     bottom: 24px;
     width: min(430px, calc(100vw - 48px));
