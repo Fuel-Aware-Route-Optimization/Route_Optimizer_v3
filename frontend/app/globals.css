@@ -615,12 +615,22 @@ button {
 
 @media (min-width: 920px) {
   .search-shell {
-    padding: 24px 24px 0;
+    position: absolute;
+    top: 24px;
+    left: 24px;
+    z-index: 20;
+    width: min(620px, calc(100vw - 500px));
+    padding: 0;
   }
 
   .search-card {
+    max-width: none;
+    border-radius: 22px;
     padding: 20px;
-    max-width: calc(100vw - 480px);
+  }
+
+  .search-copy {
+    display: none;
   }
 
   .search-form {
@@ -628,9 +638,19 @@ button {
     align-items: end;
   }
 
+  .swap-btn {
+    width: 52px;
+    height: 52px;
+  }
+
+  .go-btn {
+    min-height: 52px;
+    padding: 0 16px;
+  }
+
   .sheet {
     position: absolute;
-    top: 180px;
+    top: 96px;
     right: 24px;
     bottom: 24px;
     width: min(430px, calc(100vw - 48px));
