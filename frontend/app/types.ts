@@ -31,6 +31,7 @@ export interface RouteSummary {
   estimated_fuel_cost: number;
   average_fuel_price: number;
   estimated_range_miles: number;
+  optimization_mode: string;
   note: string;
 }
 

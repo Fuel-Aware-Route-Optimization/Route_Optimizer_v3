@@ -1,5 +1,4 @@
-from typing import List, Optional
-
+from typing import List, Literal, Optional
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
@@ -63,6 +62,7 @@ class RouteSummaryOut(BaseModel):
     estimated_fuel_cost: float
     average_fuel_price: float
     estimated_range_miles: float
+    optimization_mode: str
     note: str
 
 
@@ -188,6 +188,7 @@ def get_route(
     origin_label: Optional[str] = Query(None),
     destination_label: Optional[str] = Query(None),
     fuel_type: str = Query("regular"),
+    optimize: Literal["cost", "distance"] = Query("cost"),
 ):
     origin = _resolve_place(origin_query, origin_lat, origin_lon, origin_label)
     destination = _resolve_place(
@@ -202,7 +203,7 @@ def get_route(
 
     try:
         route = get_driving_route(origin.lon, origin.lat, destination.lon, destination.lat)
-        fuel_plan = build_fuel_plan(route, origin, destination, fuel_type)
+        fuel_plan = build_fuel_plan(route, origin, destination, fuel_type, optimize)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
@@ -224,6 +225,7 @@ def get_route(
             estimated_fuel_cost=fuel_plan.summary.estimated_cost,
             average_fuel_price=fuel_plan.summary.average_price,
             estimated_range_miles=fuel_plan.summary.route_range_miles,
+            optimization_mode=fuel_plan.summary.optimization_mode,
             note=(
                 f"{fuel_plan.summary.note} "
                 f"{route.note or ''}"

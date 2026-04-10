@@ -91,6 +91,7 @@ export default function Home() {
     selected: null,
   });
   const [fuelType, setFuelType] = useState("regular");
+  const [optimizeMode, setOptimizeMode] = useState<"cost" | "distance">("cost");
   const [route, setRoute] = useState<RouteResponse | null>(null);
   const [loadingRoute, setLoadingRoute] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -111,6 +112,7 @@ export default function Home() {
     nextOrigin: PlaceSuggestion,
     nextDestination: PlaceSuggestion,
     nextFuelType: string,
+    nextOptimize: "cost" | "distance" = "cost",
   ) => {
     setLoadingRoute(true);
     setError(null);
@@ -124,6 +126,7 @@ export default function Home() {
         origin_label: nextOrigin.label,
         destination_label: nextDestination.label,
         fuel_type: nextFuelType,
+        optimize: nextOptimize,
       });
       const response = await fetch(`${API_BASE}/route?${params.toString()}`);
 
@@ -156,6 +159,7 @@ export default function Home() {
     nextOriginState: PlaceSearchState,
     nextDestinationState: PlaceSearchState,
     nextFuelType: string,
+    nextOptimize: "cost" | "distance" = "cost",
   ) => {
     const originQuery = nextOriginState.query.trim();
     const destinationQuery = nextDestinationState.query.trim();
@@ -172,15 +176,15 @@ export default function Home() {
 
       setOrigin({ query: resolvedOrigin.label, selected: resolvedOrigin });
       setDestination({ query: resolvedDestination.label, selected: resolvedDestination });
-      await requestRoute(resolvedOrigin, resolvedDestination, nextFuelType);
+      await requestRoute(resolvedOrigin, resolvedDestination, nextFuelType, nextOptimize);
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : "Route request failed.");
     }
   }, [requestRoute, resolveSelectedPlace]);
 
   const handleSubmit = useCallback(async () => {
-    await submitWithStates(origin, destination, fuelType);
-  }, [destination, fuelType, origin, submitWithStates]);
+    await submitWithStates(origin, destination, fuelType, optimizeMode);
+  }, [destination, fuelType, optimizeMode, origin, submitWithStates]);
 
   useEffect(() => {
     if (didInit.current) return;
@@ -194,8 +198,9 @@ export default function Home() {
       latestRouteRef.current.origin,
       latestRouteRef.current.destination,
       fuelType,
+      optimizeMode,
     );
-  }, [fuelType, requestRoute]);
+  }, [fuelType, optimizeMode, requestRoute]);
 
   return (
     <main className="app-page">
@@ -248,7 +253,7 @@ export default function Home() {
                   setDestination(nextDestination);
 
                   if (nextOrigin.query.trim() && nextDestination.query.trim()) {
-                    void submitWithStates(nextOrigin, nextDestination, fuelType);
+                    void submitWithStates(nextOrigin, nextDestination, fuelType, optimizeMode);
                   }
                 }}
               >
@@ -283,6 +288,8 @@ export default function Home() {
           fuelStops={route?.fuel_stops ?? []}
           fuelType={fuelType}
           onFuelTypeChange={setFuelType}
+          optimizeMode={optimizeMode}
+          onOptimizeModeChange={setOptimizeMode}
         />
       </section>
     </main>

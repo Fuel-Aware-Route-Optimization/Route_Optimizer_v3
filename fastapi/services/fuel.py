@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from math import ceil
-from typing import Dict, List
+from typing import Dict, List, Literal
 
 from services.places import PlaceCandidate, reverse_geocode
 from services.routing import RouteResult, sample_route_points
@@ -114,6 +114,7 @@ class FuelPlanSummary:
     estimated_cost: float
     average_price: float
     route_range_miles: float
+    optimization_mode: str
     note: str
 
 
@@ -141,18 +142,39 @@ def price_for_place(place: PlaceCandidate, fuel_type: str) -> float:
     return round(base_price + FUEL_TYPE_UPCHARGE[normalized], 2)
 
 
+def _flat_average_price(fuel_type: str) -> float:
+    """Return the simple national average price for the given fuel type."""
+    values = list(US_REGULAR_PRICE_BY_STATE.values())
+    base = sum(values) / len(values) if values else DEFAULT_US_PRICE
+    return round(base + FUEL_TYPE_UPCHARGE.get(_normalize_fuel_type(fuel_type), 0.0), 2)
+
+
 def build_fuel_plan(
     route: RouteResult,
     origin: PlaceCandidate,
     destination: PlaceCandidate,
     fuel_type: str,
+    optimize: Literal["cost", "distance"] = "cost",
 ) -> FuelPlan:
     normalized = _normalize_fuel_type(fuel_type)
     mpg = MPG_BY_FUEL_TYPE[normalized]
     distance_miles = route.distance_km * KM_TO_MILES
     estimated_gallons = distance_miles / mpg if mpg > 0 else 0.0
-    usable_range = mpg * TANK_CAPACITY_GALLONS * USABLE_RANGE_RATIO
+
+    # Distance mode: stretch the usable range so fewer stops are needed.
+    # Cost mode: use the conservative range to create more stops and
+    # exploit cheaper regional fuel prices.
+    if optimize == "distance":
+        range_ratio = 0.90
+    else:
+        range_ratio = USABLE_RANGE_RATIO
+
+    usable_range = mpg * TANK_CAPACITY_GALLONS * range_ratio
     stop_count = max(0, ceil(distance_miles / usable_range) - 1) if usable_range > 0 else 0
+
+    # In distance mode, use a flat national average price for every stop
+    # instead of regional prices (simulates "just stop when you have to").
+    flat_price = _flat_average_price(normalized) if optimize == "distance" else None
 
     sample_points = sample_route_points(route.geometry, stop_count)
     checkpoints = [origin]
@@ -200,7 +222,7 @@ def build_fuel_plan(
         current = checkpoints[index]
         leg_distance_km = checkpoint_distances[index + 1] - checkpoint_distances[index]
         gallons = (leg_distance_km * KM_TO_MILES) / mpg if mpg > 0 else 0.0
-        price = price_for_place(current, normalized)
+        price = flat_price if flat_price is not None else price_for_place(current, normalized)
         cost = gallons * price
         total_cost += cost
         total_gallons += gallons
@@ -227,9 +249,17 @@ def build_fuel_plan(
         )
 
     average_price = (total_cost / total_gallons) if total_gallons > 0 else price_for_place(origin, normalized)
-    note = (
-        "Fuel costs are estimated from regional averages and route-spaced refuel stops."
-    )
+
+    if optimize == "distance":
+        note = (
+            "Route optimized for shortest distance with minimal fuel stops. "
+            "Fuel prices use the national average."
+        )
+    else:
+        note = (
+            "Fuel costs optimized using regional price averages and "
+            "route-spaced refuel stops for lowest total cost."
+        )
 
     return FuelPlan(
         stops=plan_stops,
@@ -239,6 +269,7 @@ def build_fuel_plan(
             estimated_cost=round(total_cost, 2),
             average_price=round(average_price, 2),
             route_range_miles=round(usable_range, 1),
+            optimization_mode=optimize,
             note=note,
         ),
     )
