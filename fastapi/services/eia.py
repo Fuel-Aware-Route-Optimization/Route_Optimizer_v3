@@ -2,7 +2,8 @@ import urllib.request
 import json
 import time
 import random
-
+import os
+from typing import Dict, Optional, Tuple
 
 EIA_URL = (
     "https://api.eia.gov/v2/petroleum/pri/gnd/data/"
@@ -11,9 +12,9 @@ EIA_URL = (
     "&offset=0&length=5000"
 )
 
-CACHE_TTL = 86400  # 24 hours
+CACHE_TTL = 604800  # 7 days — EIA updates weekly
 
-# city -> EIA state area code
+# city -> EIA state area code (kept for get_city_prices backward compat)
 STATE_MAP = {
     "Phoenix, AZ":      "SAZ",
     "Tucson, AZ":       "SAZ",
@@ -29,37 +30,84 @@ STATE_MAP = {
     "San Antonio, TX":  "STX",
 }
 
-_cache = {"data": None, "period": None, "ts": 0}
+# EIA area codes for all 50 states (pattern is "S" + 2-letter abbreviation)
+_STATE_TO_EIA = {
+    "AL": "SAL", "AK": "SAK", "AZ": "SAZ", "AR": "SAR", "CA": "SCA",
+    "CO": "SCO", "CT": "SCT", "DE": "SDE", "FL": "SFL", "GA": "SGA",
+    "HI": "SHI", "ID": "SID", "IL": "SIL", "IN": "SIN", "IA": "SIA",
+    "KS": "SKS", "KY": "SKY", "LA": "SLA", "ME": "SME", "MD": "SMD",
+    "MA": "SMA", "MI": "SMI", "MN": "SMN", "MS": "SMS", "MO": "SMO",
+    "MT": "SMT", "NE": "SNE", "NV": "SNV", "NH": "SNH", "NJ": "SNJ",
+    "NM": "SNM", "NY": "SNY", "NC": "SNC", "ND": "SND", "OH": "SOH",
+    "OK": "SOK", "OR": "SOR", "PA": "SPA", "RI": "SRI", "SC": "SSC",
+    "SD": "SSD", "TN": "STN", "TX": "STX", "UT": "SUT", "VT": "SVT",
+    "VA": "SVA", "WA": "SWA", "WV": "SWV", "WI": "SWI", "WY": "SWY",
+}
+
+_all_cache: Dict = {"data": None, "period": None, "ts": 0.0}
+
+EIA_KEY = os.environ.get("EIAKEY", "")
 
 
-def fetch_state_prices(api_key):
+def _get_key() -> str:
+    global EIA_KEY
+    if not EIA_KEY:
+        EIA_KEY = os.environ.get("EIAKEY", "")
+    return EIA_KEY
+
+
+def _fetch_all_diesel_prices(api_key: str) -> Tuple[Dict[str, float], str]:
     now = time.time()
-    if _cache["data"] and (now - _cache["ts"]) < CACHE_TTL:
-        return _cache["data"], _cache["period"]
+    if _all_cache["data"] is not None and (now - _all_cache["ts"]) < CACHE_TTL:
+        return _all_cache["data"], _all_cache["period"]
 
     url = f"{EIA_URL}&api_key={api_key}"
     with urllib.request.urlopen(url, timeout=15) as resp:
         raw = json.loads(resp.read().decode())
 
     rows = raw.get("response", {}).get("data", [])
-    states_needed = set(STATE_MAP.values())
-    state_prices = {}
-    period = None
+    state_prices: Dict[str, float] = {}
+    period = ""
 
     for row in rows:
         area = row.get("duoarea", "")
         product = row.get("product", "")
         value = row.get("value")
-        if area in states_needed and "EPD2D" in product and value is not None:
-            if area not in state_prices:
-                state_prices[area] = float(value)
-                if period is None:
-                    period = row.get("period", "")
+        if "EPD2D" in product and value is not None and area not in state_prices:
+            state_prices[area] = float(value)
+            if not period:
+                period = row.get("period", "")
 
-    _cache["data"] = state_prices
-    _cache["period"] = period
-    _cache["ts"] = now
+    _all_cache["data"] = state_prices
+    _all_cache["period"] = period
+    _all_cache["ts"] = now
     return state_prices, period
+
+
+def get_state_diesel_price(state_code: str) -> Optional[float]:
+    api_key = _get_key()
+    if not api_key or not state_code:
+        return None
+    try:
+        eia_area = _STATE_TO_EIA.get(state_code.upper())
+        if not eia_area:
+            return None
+        prices, _ = _fetch_all_diesel_prices(api_key)
+        return prices.get(eia_area)
+    except Exception as exc:
+        print(f"[eia] state diesel lookup failed for {state_code}: {exc}")
+        return None
+
+
+def fetch_state_prices(api_key):
+    now = time.time()
+    if _all_cache["data"] is not None and (now - _all_cache["ts"]) < CACHE_TTL:
+        legacy = {k: v for k, v in _all_cache["data"].items() if k in set(STATE_MAP.values())}
+        return legacy, _all_cache["period"]
+
+    prices, period = _fetch_all_diesel_prices(api_key)
+    legacy = {k: v for k, v in prices.items() if k in set(STATE_MAP.values())}
+    return legacy, period
 
 
 def get_city_prices(api_key, seed=42):

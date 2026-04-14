@@ -4,6 +4,8 @@ from dataclasses import dataclass
 from math import ceil
 from typing import Dict, List, Literal
 
+from services.opis import get_diesel_price
+from services.eia import get_state_diesel_price
 from services.places import PlaceCandidate, reverse_geocode
 from services.routing import RouteResult, sample_route_points
 
@@ -131,9 +133,18 @@ def _normalize_fuel_type(fuel_type: str) -> str:
 
 def price_for_place(place: PlaceCandidate, fuel_type: str) -> float:
     normalized = _normalize_fuel_type(fuel_type)
-    base_price = DEFAULT_WORLD_PRICE
-
     country_code = (place.country_code or "").upper()
+
+    if normalized == "diesel" and country_code == "US":
+        opis_price = get_diesel_price(place.lat, place.lon)
+        if opis_price is not None:
+            return round(opis_price, 2)
+
+        eia_price = get_state_diesel_price(place.state_code or "")
+        if eia_price is not None:
+            return round(eia_price, 2)
+
+    base_price = DEFAULT_WORLD_PRICE
     if country_code == "US":
         base_price = US_REGULAR_PRICE_BY_STATE.get(place.state_code or "", DEFAULT_US_PRICE)
     elif country_code:
@@ -143,7 +154,7 @@ def price_for_place(place: PlaceCandidate, fuel_type: str) -> float:
 
 
 def _flat_average_price(fuel_type: str) -> float:
-    """Return the simple national average price for the given fuel type."""
+    # Return the simple national average price for the given fuel type.
     values = list(US_REGULAR_PRICE_BY_STATE.values())
     base = sum(values) / len(values) if values else DEFAULT_US_PRICE
     return round(base + FUEL_TYPE_UPCHARGE.get(_normalize_fuel_type(fuel_type), 0.0), 2)
